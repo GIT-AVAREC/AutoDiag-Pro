@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoDiag Pro — Справочник автоэлектрика (Cloud + GitHub)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        garage: {
+                            950: '#070b14',
+                            900: '#0f172a',
+                            800: '#1e293b',
+                            700: '#334155',
+                            accent: '#f59e0b',
+                            cyan: '#06b6d4',
+                            emerald: '#10b981',
+                            danger: '#ef4444'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #f59e0b; }
+        .oscilloscope-grid {
+            background-color: #040911;
+            background-image: 
+                linear-gradient(to right, rgba(6, 182, 212, 0.14) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(6, 182, 212, 0.14) 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+        .pulse-dot { animation: pulseGlow 2s infinite; }
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.25); }
+        }
+    </style>
+</head>
+<body class="bg-garage-950 text-slate-200 font-sans antialiased selection:bg-amber-500 selection:text-slate-950">
+
+    <!-- Верхняя панель навигации -->
+    <header class="sticky top-0 z-40 bg-garage-900/95 backdrop-blur-md border-b border-slate-800 shadow-lg">
+        <div class="max-w-7xl mx-auto px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+            <!-- Логотип и статус Firebase -->
+            <div class="flex items-center gap-3">
+                <button id="mobileMenuBtn" class="lg:hidden p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+                <div class="flex items-center gap-2.5">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/20 text-slate-950 font-extrabold text-xl">
+                        ⚡
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-white">
+                                AutoDiag <span class="text-amber-400">PRO</span>
+                            </h1>
+                            <!-- Индикатор подключения Firebase -->
+                            <div id="firebaseStatusBadge" title="Статус подключения к Firebase (whatsapp-fc91e)"
+                                class="flex items-center gap-1.5 text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                                <span id="firebaseStatusDot" class="w-2 h-2 rounded-full bg-amber-400 pulse-dot"></span>
+                                <span id="firebaseStatusText">Firebase: Подключение...</span>
+                            </div>
+                        </div>
+                        <p class="text-xs text-slate-400 hidden sm:block">Облачный справочник автоэлектрика • GitHub Pages + Firebase</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Переключатель режимов работы -->
+            <div class="flex flex-wrap items-center gap-1.5 bg-garage-950 p-1 rounded-xl border border-slate-800">
+                <button onclick="switchMainMode('sensors')" id="tabSensors" class="px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all bg-amber-500 text-slate-950 shadow">
+                    📡 База датчиков
+                </button>
+                <button onclick="switchMainMode('symptoms')" id="tabSymptoms" class="px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-400 hover:text-white">
+                    🩺 По симптомам
+                </button>
+                <button onclick="switchMainMode('tools')" id="tabTools" class="px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-400 hover:text-white">
+                    🧮 Калькулятор АЦП
+                </button>
+                <button onclick="openAddSensorModal()" class="px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500 hover:text-slate-950">
+                    ➕ Добавить датчик
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Основной контейнер -->
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 py-5">
+
+        <!-- РЕЖИМ 1: БАЗА ДАТЧИКОВ -->
+        <div id="modeSensors" class="flex flex-col lg:flex-row gap-6">
+            
+            <!-- Боковая панель со списком датчиков -->
+            <aside id="sidebarDrawer" class="fixed inset-y-0 left-0 z-50 w-80 bg-garage-900 border-r border-slate-800 p-4 transform -translate-x-full transition-transform duration-300 lg:relative lg:translate-x-0 lg:w-80 lg:rounded-2xl lg:border lg:h-[calc(100vh-105px)] lg:sticky lg:top-20 flex flex-col">
+                <div class="flex items-center justify-between lg:hidden mb-3 pb-2 border-b border-slate-800">
+                    <span class="font-bold text-amber-400">Выбор датчика</span>
+                    <button id="closeSidebarBtn" class="p-1.5 rounded-lg bg-slate-800 text-slate-300">✕</button>
+                </div>
+
+                <!-- Поиск -->
+                <div class="relative mb-3">
+                    <input type="text" id="sensorSearch" placeholder="Поиск: ДПКВ, P0335, ШДК, троит..." 
+                        class="w-full bg-garage-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500">
+                    <span class="absolute left-3 top-2.5 text-slate-500 text-sm">🔍</span>
+                </div>
+
+                <!-- Фильтр по системам -->
+                <div class="flex flex-wrap gap-1.5 mb-3" id="categoryFilters">
+                    <button data-cat="all" class="cat-btn active px-2.5 py-1 rounded-lg text-xs font-medium bg-amber-500 text-slate-950">Все (<span id="totalSensorCount">15</span>)</button>
+                    <button data-cat="engine" class="cat-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">Двигатель</button>
+                    <button data-cat="air_fuel" class="cat-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">Впуск/Топливо</button>
+                    <button data-cat="exhaust" class="cat-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">Выхлоп</button>
+                    <button data-cat="chassis" class="cat-btn px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">Ходовая/КПП</button>
+                </div>
+
+                <!-- Список датчиков -->
+                <div id="sensorList" class="flex-1 overflow-y-auto space-y-1.5 pr-1">
+                    <!-- Заполняется через JS -->
+                </div>
+            </aside>
+
+            <!-- Затемнение фона для мобильного меню -->
+            <div id="sidebarBackdrop" class="fixed inset-0 bg-black/70 z-40 hidden lg:hidden"></div>
+
+            <!-- Детальная карточка выбранного датчика -->
+            <main class="flex-1 min-w-0 space-y-6" id="sensorDetailContainer">
+                <!-- Заполняется динамически -->
+            </main>
+        </div>
+
+        <!-- РЕЖИМ 2: ДИАГНОСТИКА ПО СИМПТОМАМ -->
+        <div id="modeSymptoms" class="hidden space-y-6">
+            <div class="bg-garage-900 border border-slate-800 rounded-2xl p-5 sm:p-6">
+                <h2 class="text-xl sm:text-2xl font-bold text-white mb-2">🩺 Интерактивный поиск неисправности по симптомам</h2>
+                <p class="text-slate-400 text-sm mb-5">Выберите наблюдаемую проблему автомобиля, чтобы увидеть список вероятных виновников среди датчиков и порядок их проверки.</p>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3" id="symptomButtonsGrid">
+                    <!-- Кнопки симптомов -->
+                </div>
+            </div>
+
+            <div id="symptomResults" class="space-y-4"></div>
+        </div>
+
+        <!-- РЕЖИМ 3: КАЛЬКУЛЯТОР ДИАГНОСТА (АЦП ДМРВ И ДТОЖ) -->
+        <div id="modeTools" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Калькулятор износа ДМРВ Bosch HFM5 -->
+            <div class="bg-garage-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+                <div class="flex items-center gap-3 border-b border-slate-800 pb-3">
+                    <span class="text-2xl">🌬️</span>
+                    <div>
+                        <h3 class="text-lg font-bold text-white">Оценка состояния ДМРВ (Bosch HFM5)</h3>
+                        <p class="text-xs text-slate-400">По напряжению покоя (АЦП при включенном зажигании, двигатель заглушен)</p>
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-sm text-slate-300 mb-2">Измеренное напряжение между сигнальным проводом (Pin 5) и массой (Pin 3):</label>
+                    <div class="flex items-center gap-4">
+                        <input type="range" id="mafVoltageSlider" min="0.95" max="1.25" step="0.01" value="1.00" class="w-full accent-amber-500">
+                        <span id="mafVoltageDisplay" class="font-mono text-xl font-bold text-amber-400 bg-garage-950 px-3 py-1 rounded-lg border border-slate-700">1.00 В</span>
+                    </div>
+                </div>
+
+                <div id="mafVerdictBox" class="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm"></div>
+
+                <div class="text-xs text-slate-400 bg-garage-950 p-3 rounded-xl border border-slate-800 space-y-1 font-mono">
+                    <div>• 0.99 – 1.01 В : Новый / идеальный датчик</div>
+                    <div>• 1.02 – 1.03 В : Хорошее состояние (допустимо)</div>
+                    <div>• 1.04 – 1.05 В : Критический износ (завышает расход топлива)</div>
+                    <div>• &gt; 1.05 В : Датчик неисправен, требуется замена</div>
+                </div>
+            </div>
+
+            <!-- Калькулятор сопротивления ДТОЖ (NTC термистор) -->
+            <div class="bg-garage-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+                <div class="flex items-center gap-3 border-b border-slate-800 pb-3">
+                    <span class="text-2xl">🌡️</span>
+                    <div>
+                        <h3 class="text-lg font-bold text-white">Проверка терморезистора ДТОЖ / ДТВВ (NTC)</h3>
+                        <p class="text-xs text-slate-400">Эталонное сопротивление и напряжение АЦП в зависимости от температуры</p>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm text-slate-300 mb-2">Температура антифриза / воздуха (°C):</label>
+                    <div class="flex items-center gap-4">
+                        <input type="range" id="tempSlider" min="-30" max="110" step="5" value="20" class="w-full accent-cyan-500">
+                        <span id="tempDisplay" class="font-mono text-xl font-bold text-cyan-400 bg-garage-950 px-3 py-1 rounded-lg border border-slate-700">+20 °C</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-garage-950 p-4 rounded-xl border border-slate-800">
+                        <div class="text-xs text-slate-400 mb-1">Эталонное сопротивление</div>
+                        <div id="ntcResistanceVal" class="font-mono text-xl font-bold text-white">~ 2 500 Ом</div>
+                    </div>
+                    <div class="bg-garage-950 p-4 rounded-xl border border-slate-800">
+                        <div class="text-xs text-slate-400 mb-1">Ожидаемое АЦП на ЭБУ</div>
+                        <div id="ntcVoltageVal" class="font-mono text-xl font-bold text-amber-400">~ 2.45 В</div>
+                    </div>
+                </div>
+
+                <p class="text-xs text-slate-400 leading-relaxed">
+                    <strong>Совет диагноста:</strong> Если на холодном двигателе сканер показывает +80°C — обрыв цепи или высокое сопротивление в разъеме, ЭБУ не обогатит смесь (плохой запуск). Если показывает -40°C — короткое замыкание сигнального провода на массу (заливает свечи черным дымом).
+                </p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- МОДАЛЬНОЕ ОКНО: ДОБАВЛЕНИЕ НОВОГО ДАТЧИКА В FIREBASE FIRESTORE -->
+    <div id="addSensorModal" class="fixed inset-0 z-50 hidden bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-garage-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <span class="text-cyan-400">☁️</span> Добавить датчик в базу Firebase
+                </h3>
+                <button onclick="closeAddSensorModal()" class="text-slate-400 hover:text-white p-1">✕</button>
+            </div>
+
+            <form id="addSensorForm" class="space-y-3 text-sm">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Краткое имя *</label>
+                        <input type="text" id="newShortName" required placeholder="Напр: ДТВ (Датчик темп. выхлопа)" 
+                            class="w-full bg-garage-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-amber-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Система *</label>
+                        <select id="newCategory" class="w-full bg-garage-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-amber-500 focus:outline-none">
+                            <option value="engine">Двигатель</option>
+                            <option value="air_fuel">Впуск / Топливо</option>
+                            <option value="exhaust">Выхлоп</option>
+                            <option value="chassis">Ходовая / КПП</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">Полное наименование *</label>
+                    <input type="text" id="newFullName" required placeholder="Датчик температуры отработавших газов (EGT)" 
+                        class="w-full bg-garage-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-amber-500 focus:outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Коды ошибок (через запятую)</label>
+                        <input type="text" id="newObdCodes" placeholder="P0544, P0546" 
+                            class="w-full bg-garage-950 border border-slate-700 rounded-xl px-3 py-2 font-mono text-white focus:border-amber-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Форма сигнала осциллографа</label>
+                        <select id="newWaveType" class="w-full bg-garage-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-amber-500 focus:outline-none">
+                            <option value="ntc">Аналоговый плавный (АЦП 0.5–4.5В)</option>
+                            <option value="ckp">Синусоида (Индуктивный)</option>
+                            <option value="cmp">Меандр 0–5В (Холла / ШИМ)</option>
+                            <option value="lambda">Синусоида медленная (0.1–0.9В)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Питание (Vref)</label>
+                        <input type="text" id="newSupply" placeholder="+5 В опорное от ЭБУ" 
+                            class="w-full bg-garage-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-amber-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Эталонный сигнал на ХХ</label>
+                        <input type="text" id="newIdleSignal" placeholder="~1.2 В (350°C)" 
+                            class="w-full bg-garage-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-amber-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">Принцип работы</label>
+                    <textarea id="newPrinciple" rows="2" placeholder="Опишите устройство и назначение датчика..." 
+                        class="w-full bg-garage-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-amber-500 focus:outline-none"></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">Как проверить мультиметром / осциллографом</label>
+                    <textarea id="newCheckStep" rows="2" placeholder="Пошаговая инструкция проверки..." 
+                        class="w-full bg-garage-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-amber-500 focus:outline-none"></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">Симптомы неисправности</label>
+                    <input type="text" id="newSymptom" placeholder="Ограничение мощности, прожиг сажевого фильтра не запускается" 
+                        class="w-full bg-garage-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-amber-500 focus:outline-none">
+                </div>
+
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeAddSensorModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 font-semibold">Отмена</button>
+                    <button type="submit" id="saveNewSensorBtn" class="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold shadow-lg">
+                        Сохранить в Firebase
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Уведомление (Toast) вместо alert() -->
+    <div id="toastNotification" class="fixed bottom-5 right-5 z-50 hidden bg-slate-800 border border-amber-500/60 text-white px-4 py-3 rounded-xl shadow-2xl text-sm font-medium flex items-center gap-2 max-w-sm">
+        <span id="toastIcon" class="text-amber-400">✓</span>
+        <span id="toastText">Готово</span>
+    </div>
+
+    <!-- ==========================================
+         МОДУЛЬНЫЙ FIREBASE SDK v11.0.2 + ЛОГИКА ПРИЛОЖЕНИЯ
+         ========================================== -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+        import { getAnalytics, logEvent } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-analytics.js";
+        import { 
+            getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, arrayUnion, serverTimestamp 
+        } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+        import { 
+            getStorage, ref, uploadBytes, getDownloadURL 
+        } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js";
+
+        // Точная конфигурация Firebase из проекта whatsapp-fc91e
+        const firebaseConfig = {
+            apiKey: "AIzaSyDwGWAMY3ivKfZpZLQ87kB7tnj9GS3kCvY",
+            authDomain: "whatsapp-fc91e.firebaseapp.com",
+            projectId: "whatsapp-fc91e",
+            storageBucket: "whatsapp-fc91e.firebasestorage.app",
+            messagingSenderId: "245791575033",
+            appId: "1:245791575033:web:3255c5f20c3b3bddcf4b28",
+            measurementId: "G-M7YJSTX4EX"
+        };
+
+        // Глобальный объект облачного состояния
+        window.fbState = {
+            app: null,
+            db: null,
+            storage: null,
+            analytics: null,
+            connected: false,
+            cloudMeta: {} // Хранит фото (photos: []) и заметки (notes: []) из Firestore по ID датчика
+        };
+
+        // Инициализация Firebase с безопасным fallback
+        async function initFirebaseCloud() {
+            const badge = document.getElementById('firebaseStatusBadge');
+            const dot = document.getElementById('firebaseStatusDot');
+            const text = document.getElementById('firebaseStatusText');
+
+            try {
+                const app = initializeApp(firebaseConfig);
+                window.fbState.app = app;
+                window.fbState.db = getFirestore(app);
+                window.fbState.storage = getStorage(app);
+                try {
+                    window.fbState.analytics = getAnalytics(app);
+                    logEvent(window.fbState.analytics, 'page_view', { page_title: 'AutoDiag Pro' });
+                } catch (e) {
+                    // Аналитика может блокироваться расширениями браузера
+                }
+
+                // Пробуем загрузить пользовательские датчики и заметки из коллекции autodiag_sensors
+                const querySnapshot = await getDocs(collection(window.fbState.db, "autodiag_sensors"));
+                querySnapshot.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    window.fbState.cloudMeta[docSnap.id] = {
+                        photos: data.photos || [],
+                        notes: data.notes || []
+                    };
+                    // Если это кастомный датчик, добавленный мастером, добавляем его в общий список
+                    if (data.isCustom && !window.SENSORS_DB.find(s => s.id === docSnap.id)) {
+                        window.SENSORS_DB.push({
+                            id: docSnap.id,
+                            shortName: data.shortName,
+                            fullName: data.fullName,
+                            category: data.category || 'engine',
+                            categoryName: data.categoryName || 'Пользовательский',
+                            types: data.types || 'Добавлен мастером в Firebase',
+                            obdCodes: data.obdCodes || ['OBD-II'],
+                            symptomsTags: ['no_power', 'rough_idle'],
+                            specs: {
+                                supply: data.supply || '+5 В / +12 В',
+                                idleSignal: data.idleSignal || 'См. заметки мастера',
+                                revSignal: data.revSignal || 'Изменяется под нагрузкой',
+                                resistance: data.resistance || 'См. документацию'
+                            },
+                            principle: data.principle || 'Пользовательский датчик из облачной базы Firebase.',
+                            checkSteps: [data.checkStep || 'Проверьте опорное питание, массу и форму сигнала осциллографом.'],
+                            symptoms: [data.symptom || 'Ошибка по цепи датчика на приборной панели.'],
+                            waveType: data.waveType || 'ntc',
+                            pinout: [
+                                { pin: '1', name: 'Питание (Vref)', color: '#ef4444' },
+                                { pin: '2', name: 'Сигнал (Out)', color: '#10b981' },
+                                { pin: '3', name: 'Масса (GND)', color: '#3b82f6' }
+                            ],
+                            photoSvg: getGenericSensorSvg(data.shortName),
+                            circuitSvg: getGenericCircuitSvg(data.shortName)
+                        });
+                    }
+                });
+
+                window.fbState.connected = true;
+                badge.className = "flex items-center gap-1.5 text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
+                dot.className = "w-2 h-2 rounded-full bg-emerald-400 pulse-dot";
+                text.innerText = "Firebase: whatsapp-fc91e • Online";
+
+                // Обновляем интерфейс с учетом загруженных облачных данных
+                window.renderSensorSidebar();
+                if (window.currentSensor) {
+                    window.renderSensorDetail(window.currentSensor);
+                }
+            } catch (error) {
+                console.warn("Firebase fallback режим:", error.message);
+                window.fbState.connected = false;
+                badge.className = "flex items-center gap-1.5 text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-amber-400 border border-amber-500/30";
+                dot.className = "w-2 h-2 rounded-full bg-amber-400";
+                text.innerText = "Локальная база (Firestore ограничен)";
+            }
+        }
+
+        // Загрузка реального фото датчика или осциллограммы в Firebase Storage
+        window.uploadSensorPhotoToCloud = async function(sensorId, fileInput) {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const statusEl = document.getElementById('uploadStatusText');
+            if (statusEl) statusEl.innerText = "⏳ Загрузка фото в Firebase Storage...";
+
+            try {
+                if (!window.fbState.storage || !window.fbState.db) {
+                    throw new Error("Нет подключения к Firebase");
+                }
+
+                const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+                const storageRef = ref(window.fbState.storage, `autodiag_photos/${sensorId}/${safeName}`);
+                
+                // Загружаем файл в Storage
+                const snapshot = await uploadBytes(storageRef, file);
+                const downloadURL = await getDownloadURL(snapshot.ref);
+
+                // Сохраняем ссылку в Firestore (коллекция autodiag_sensors)
+                const docRef = doc(window.fbState.db, "autodiag_sensors", sensorId);
+                await setDoc(docRef, {
+                    photos: arrayUnion({
+                        url: downloadURL,
+                        name: file.name,
+                        uploadedAt: new Date().toLocaleDateString('ru-RU')
+                    }),
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+
+                // Обновляем локальный кэш
+                if (!window.fbState.cloudMeta[sensorId]) {
+                    window.fbState.cloudMeta[sensorId] = { photos: [], notes: [] };
+                }
+                window.fbState.cloudMeta[sensorId].photos.push({
+                    url: downloadURL,
+                    name: file.name,
+                    uploadedAt: new Date().toLocaleDateString('ru-RU')
+                });
+
+                window.showToast("Фото успешно загружено в Firebase Storage!", "✓");
+                window.renderSensorDetail(window.currentSensor);
+            } catch (err) {
+                console.error("Ошибка загрузки фото:", err);
+                // Fallback: локальный предпросмотр в текущей сессии, если правила Storage еще не открыты
+                const localUrl = URL.createObjectURL(file);
+                if (!window.fbState.cloudMeta[sensorId]) {
+                    window.fbState.cloudMeta[sensorId] = { photos: [], notes: [] };
+                }
+                window.fbState.cloudMeta[sensorId].photos.push({
+                    url: localUrl,
+                    name: `${file.name} (локально)`,
+                    uploadedAt: "Сейчас"
+                });
+                window.showToast("Фото добавлено локально (проверьте правила Firebase Storage)", "⚠️");
+                window.renderSensorDetail(window.currentSensor);
+            }
+        };
+
+        // Сохранение заметки / реального замера мастера в Firestore
+        window.saveDiagNoteToCloud = async function(sensorId) {
+            const noteInput = document.getElementById('diagNoteInput');
+            const carModelInput = document.getElementById('diagCarModelInput');
+            const text = noteInput.value.trim();
+            const carModel = carModelInput.value.trim() || "Авто не указано";
+
+            if (!text) {
+                window.showToast("Введите текст замера или заметки", "⚠️");
+                return;
+            }
+
+            const newNote = {
+                car: carModel,
+                text: text,
+                date: new Date().toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+            };
+
+            try {
+                if (!window.fbState.db) throw new Error("Нет связи с Firestore");
+                const docRef = doc(window.fbState.db, "autodiag_sensors", sensorId);
+                await setDoc(docRef, {
+                    notes: arrayUnion(newNote),
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+
+                if (!window.fbState.cloudMeta[sensorId]) {
+                    window.fbState.cloudMeta[sensorId] = { photos: [], notes: [] };
+                }
+                window.fbState.cloudMeta[sensorId].notes.push(newNote);
+                window.showToast("Замер сохранен в облако Firestore!", "✓");
+                window.renderSensorDetail(window.currentSensor);
+            } catch (err) {
+                console.warn("Локальное сохранение заметки:", err);
+                if (!window.fbState.cloudMeta[sensorId]) {
+                    window.fbState.cloudMeta[sensorId] = { photos: [], notes: [] };
+                }
+                window.fbState.cloudMeta[sensorId].notes.push(newNote);
+                window.showToast("Заметка добавлена в текущую сессию (проверьте правила Firestore)", "ℹ️");
+                window.renderSensorDetail(window.currentSensor);
+            }
+        };
+
+        // Добавление нового датчика в Firestore
+        document.getElementById('addSensorForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('saveNewSensorBtn');
+            btn.disabled = true;
+            btn.innerText = "Сохранение...";
+
+            const shortName = document.getElementById('newShortName').value.trim();
+            const category = document.getElementById('newCategory').value;
+            const catNames = { engine: 'Двигатель', air_fuel: 'Впуск / Топливо', exhaust: 'Выхлоп', chassis: 'Ходовая / КПП' };
+            const fullName = document.getElementById('newFullName').value.trim();
+            const obdRaw = document.getElementById('newObdCodes').value.trim();
+            const obdCodes = obdRaw ? obdRaw.split(',').map(c => c.trim().toUpperCase()) : ['P0000'];
+            const waveType = document.getElementById('newWaveType').value;
+            const supply = document.getElementById('newSupply').value.trim() || '+5 В опорное от ЭБУ';
+            const idleSignal = document.getElementById('newIdleSignal').value.trim() || '0.5–4.5 В';
+            const principle = document.getElementById('newPrinciple').value.trim() || 'Датчик системы управления двигателем.';
+            const checkStep = document.getElementById('newCheckStep').value.trim() || 'Проверьте опорное питание 5В, массу и выходной сигнал.';
+            const symptom = document.getElementById('newSymptom').value.trim() || 'Загорается Check Engine, снижение мощности.';
+
+            const customId = 'custom_' + Date.now();
+            const sensorPayload = {
+                isCustom: true,
+                shortName,
+                fullName,
+                category,
+                categoryName: catNames[category],
+                obdCodes,
+                waveType,
+                supply,
+                idleSignal,
+                revSignal: 'Изменяется пропорционально нагрузке',
+                resistance: 'См. техническую карту',
+                principle,
+                checkStep,
+                symptom,
+                photos: [],
+                notes: [],
+                createdAt: serverTimestamp()
+            };
+
+            try {
+                if (window.fbState.db) {
+                    await setDoc(doc(window.fbState.db, "autodiag_sensors", customId), sensorPayload);
+                }
+                window.SENSORS_DB.push({
+                    id: customId,
+                    shortName,
+                    fullName,
+                    category,
+                    categoryName: catNames[category],
+                    types: 'Добавлен мастером (Cloud)',
+                    obdCodes,
+                    symptomsTags: ['no_power', 'rough_idle'],
+                    specs: { supply, idleSignal, revSignal: sensorPayload.revSignal, resistance: sensorPayload.resistance },
+                    principle,
+                    checkSteps: [checkStep],
+                    symptoms: [symptom],
+                    waveType,
+                    pinout: [
+                        { pin: '1', name: 'Питание (Vref)', color: '#ef4444' },
+                        { pin: '2', name: 'Сигнал (Out)', color: '#10b981' },
+                        { pin: '3', name: 'Масса (GND)', color: '#3b82f6' }
+                    ],
+                    photoSvg: getGenericSensorSvg(shortName),
+                    circuitSvg: getGenericCircuitSvg(shortName)
+                });
+                window.fbState.cloudMeta[customId] = { photos: [], notes: [] };
+                window.closeAddSensorModal();
+                window.renderSensorSidebar();
+                window.selectSensor(customId);
+                window.showToast(`Датчик "${shortName}" добавлен в базу!`, "✓");
+                e.target.reset();
+            } catch (err) {
+                window.showToast("Ошибка сохранения: " + err.message, "⚠️");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Сохранить в Firebase";
+            }
+        });
+
+        function getGenericSensorSvg(label) {
+            return `<svg viewBox="0 0 360 210" class="w-full h-full">
+                <rect x="75" y="75" width="60" height="55" rx="6" fill="#0f172a" stroke="#f59e0b" stroke-width="2"/>
+                <rect x="135" y="65" width="55" height="75" rx="8" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
+                <rect x="190" y="82" width="65" height="40" rx="4" fill="#334155" stroke="#94a3b8" stroke-width="1.5"/>
+                <text x="142" y="106" fill="#06b6d4" font-size="11" font-family="monospace" font-weight="bold">${label.slice(0, 8)}</text>
+                <text x="80" y="152" fill="#10b981" font-size="10" font-family="monospace">1: +Vref | 2: Signal | 3: GND</text>
+            </svg>`;
+        }
+
+        function getGenericCircuitSvg(label) {
+            return `<svg viewBox="0 0 420 200" class="w-full h-full">
+                <rect x="15" y="25" width="175" height="150" rx="10" fill="#0f172a" stroke="#475569" stroke-width="2" stroke-dasharray="5,3"/>
+                <text x="28" y="45" fill="#94a3b8" font-size="10" font-family="monospace">${label.toUpperCase()}</text>
+                <rect x="45" y="70" width="90" height="55" rx="6" fill="#1e293b" stroke="#06b6d4" stroke-width="2"/>
+                <text x="58" y="102" fill="#06b6d4" font-size="10" font-weight="bold">Сенсор</text>
+                <line x1="135" y1="80" x2="275" y2="65" stroke="#ef4444" stroke-width="2"/>
+                <line x1="135" y1="98" x2="275" y2="98" stroke="#10b981" stroke-width="2"/>
+                <line x1="135" y1="115" x2="275" y2="135" stroke="#38bdf8" stroke-width="2"/>
+                <rect x="275" y="25" width="130" height="150" rx="10" fill="#1e293b" stroke="#06b6d4" stroke-width="2"/>
+                <text x="292" y="45" fill="#06b6d4" font-size="11" font-family="monospace">ЭБУ (ECU)</text>
+                <text x="285" y="68" fill="#ef4444" font-size="10" font-family="monospace">+5V / +12V</text>
+                <text x="285" y="102" fill="#10b981" font-size="10" font-family="monospace">Вход АЦП</text>
+                <text x="285" y="138" fill="#38bdf8" font-size="10" font-family="monospace">Масса ЭБУ</text>
+            </svg>`;
+        }
+
+        // Запускаем подключение к Firebase после загрузки DOM
+        window.addEventListener('DOMContentLoaded', () => {
+            initFirebaseCloud();
+        });
+    </script>
+
+    <!-- ==========================================
+         ОСНОВНАЯ БАЗА ДАННЫХ И ЛОГИКА ИНТЕРФЕЙСА
+         ========================================== -->
+    <script>
+        window.SENSORS_DB = [
+            {
+                id: 'dpkv',
+                shortName: 'ДПКВ',
+                fullName: 'Датчик положения коленчатого вала (CKP)',
+                category: 'engine',
+                categoryName: 'Двигатель',
+                types: 'Индуктивный (2-pin) / Эффект Холла (3-pin)',
+                obdCodes: ['P0335', 'P0336', 'P0337', 'P0338'],
+                symptomsTags: ['no_start', 'stalls', 'misfire', 'no_power'],
+                specs: {
+                    supply: 'Индуктивный: нет (сам генерирует) | Холла: +5В или +12В',
+                    idleSignal: 'Индуктивный: 1.5–4.5 В AC | Холла: меандр 0–5 В (или 0–12 В)',
+                    revSignal: 'Индуктивный: до 15–40 В AC | Холла: частота растет пропорционально оборотам',
+                    resistance: 'Индуктивный: 500 – 950 Ом (Холла не прозванивается омметром!)'
+                },
+                principle: `Главный датчик системы управления двигателем. Считывает зубья задающего диска (обычно формула 60-2, т.е. 58 зубьев и 2 пропущенных для определения ВМТ 1-го цилиндра).
+                <br><br><b>1. Индуктивный (магнитоэлектрический):</b> Состоит из постоянного магнита и катушки. При прохождении стального зуба меняется магнитный поток, в катушке наводится переменное синусоидальное напряжение (ЭДС). В месте пропуска 2 зубьев амплитуда всплеска возрастает вдвое — так ЭБУ понимает положение ВМТ.
+                <br><b>2. На эффекте Холла:</b> Внутри стоит полупроводниковая пластина и триггер Шмитта. При прохождении зуба датчик замыкает сигнальный провод на массу, формируя четкие прямоугольные импульсы (меандр).`,
+                checkSteps: [
+                    '<b>Индуктивный (мультиметр):</b> Снимите разъем, измерьте сопротивление между выводами 1 и 2. Норма: 550–850 Ом. Если ∞ (обрыв) или 0 Ом (КЗ) — замена. Переключите мультиметр в режим AC (переменный ток) и покрутите стартером — должно появиться 0.5–2.5 В.',
+                    '<b>Датчик Холла (мультиметр):</b> При включенном зажигании проверьте питание (+5В или +12В) на крайнем пине и массу на другом. На сигнальном проводе при медленном прокручивании коленвала напряжение должно скакать: 0 В ↔ 5 В.',
+                    '<b>Осциллограф (эталонная проверка):</b> Подключите щуп к сигнальному проводу. Синусоида (или меандр) должна быть ровной, без срывов, с четким пропуском 2 зубьев (синхродиск). Биение задающего диска вызовет «рыбу» (модуляцию амплитуды).'
+                ],
+                symptoms: [
+                    'Двигатель вообще не заводится (нет искры и нет импульсов на форсунки — ЭБУ не видит прокрутку).',
+                    'Двигатель глохнет на горячую при прогреве до 80–90°C, а после остывания снова заводится (межвитковое замыкание катушки при нагреве).',
+                    'Стрелка тахометра лежит на нуле при прокрутке стартером.',
+                    'Резкие провалы, дерганье на ходу и хаотичные пропуски воспламенения.'
+                ],
+                waveType: 'ckp',
+                pinout: [
+                    { pin: '1', name: 'Сигнал + (AC / Out)', color: '#ef4444' },
+                    { pin: '2', name: 'Сигнал - (Масса ЭБУ)', color: '#3b82f6' },
+                    { pin: '3', name: 'Экран (Оплетка)', color: '#94a3b8' }
+                ],
+                photoSvg: `
+                    <svg viewBox="0 0 360 210" class="w-full h-full">
+                        <defs>
+                            <linearGradient id="metalGrad" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stop-color="#94a3b8"/>
+                                <stop offset="50%" stop-color="#475569"/>
+                                <stop offset="100%" stop-color="#1e293b"/>
+                            </linearGradient>
+                            <linearGradient id="plasticGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#334155"/>
+                                <stop offset="100%" stop-color="#0f172a"/>
+                            </linearGradient>
+                        </defs>
+                        <ellipse cx="95" cy="95" rx="28" ry="20" fill="url(#plasticGrad)" stroke="#64748b" stroke-width="2"/>
+                        <circle cx="95" cy="95" r="9" fill="#090d16" stroke="#94a3b8" stroke-width="2"/>
+                        <rect x="110" y="75" width="75" height="40" rx="6" fill="url(#plasticGrad)" stroke="#64748b" stroke-width="2"/>
+                        <rect x="180" y="73" width="7" height="44" rx="3" fill="#ef4444"/>
+                        <rect x="187" y="80" width="68" height="30" rx="4" fill="url(#metalGrad)" stroke="#cbd5e1" stroke-width="1.5"/>
+                        <rect x="255" y="86" width="12" height="18" rx="2" fill="#f59e0b"/>
+                        <path d="M 110 95 C 75 95, 75 155, 115 155 L 175 155" fill="none" stroke="#1e293b" stroke-width="12" stroke-linecap="round"/>
+                        <path d="M 110 95 C 75 95, 75 155, 115 155 L 175 155" fill="none" stroke="#475569" stroke-width="2" stroke-dasharray="6,4"/>
+                        <rect x="175" y="135" width="65" height="40" rx="6" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+                        <circle cx="222" cy="147" r="3" fill="#ef4444"/>
+                        <circle cx="222" cy="155" r="3" fill="#3b82f6"/>
+                        <circle cx="222" cy="163" r="3" fill="#94a3b8"/>
+                        <text x="248" y="65" fill="#f59e0b" font-size="11" font-family="monospace">Магнитный сердечник</text>
+                        <line x1="260" y1="84" x2="260" y2="70" stroke="#f59e0b" stroke-width="1"/>
+                        <text x="185" y="62" fill="#ef4444" font-size="10" font-family="monospace">O-Ring</text>
+                        <text x="248" y="152" fill="#ef4444" font-size="10" font-family="monospace">1: Sig+</text>
+                        <text x="248" y="164" fill="#38bdf8" font-size="10" font-family="monospace">2: Sig-</text>
+                        <text x="248" y="176" fill="#94a3b8" font-size="10" font-family="monospace">3: Экран</text>
+                    </svg>
+                `,
+                circuitSvg: `
+                    <svg viewBox="0 0 420 200" class="w-full h-full">
+                        <rect x="15" y="25" width="165" height="150" rx="10" fill="#0f172a" stroke="#475569" stroke-width="2" stroke-dasharray="5,3"/>
+                        <text x="28" y="45" fill="#94a3b8" font-size="11" font-family="monospace">ДАТЧИК (Индуктивный)</text>
+                        <rect x="30" y="75" width="22" height="55" fill="#334155" stroke="#94a3b8"/>
+                        <text x="35" y="92" fill="#ef4444" font-size="11" font-weight="bold">N</text>
+                        <text x="35" y="122" fill="#38bdf8" font-size="11" font-weight="bold">S</text>
+                        <path d="M 75 65 C 90 65, 90 80, 75 80 C 90 80, 90 95, 75 95 C 90 95, 90 110, 75 110 C 90 110, 90 125, 75 125" fill="none" stroke="#f59e0b" stroke-width="3"/>
+                        <text x="65" y="148" fill="#f59e0b" font-size="10" font-family="monospace">R = 650 Ом</text>
+                        <line x1="75" y1="65" x2="265" y2="65" stroke="#ef4444" stroke-width="2.5"/>
+                        <line x1="75" y1="125" x2="265" y2="125" stroke="#38bdf8" stroke-width="2.5"/>
+                        <rect x="195" y="55" width="45" height="80" rx="12" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,2"/>
+                        <line x1="217" y1="135" x2="217" y2="165" stroke="#64748b" stroke-width="1.5"/>
+                        <line x1="207" y1="165" x2="227" y2="165" stroke="#64748b" stroke-width="2"/>
+                        <text x="195" y="180" fill="#64748b" font-size="10" font-family="monospace">GND Экран</text>
+                        <rect x="265" y="25" width="140" height="150" rx="10" fill="#1e293b" stroke="#06b6d4" stroke-width="2"/>
+                        <text x="285" y="45" fill="#06b6d4" font-size="11" font-family="monospace">ЭБУ ДВИГАТЕЛЯ</text>
+                        <polygon points="300,60 300,130 355,95" fill="#0f172a" stroke="#10b981" stroke-width="2"/>
+                        <text x="306" y="83" fill="#ef4444" font-size="12">+</text>
+                        <text x="306" y="115" fill="#38bdf8" font-size="12">-</text>
+                        <line x1="265" y1="65" x2="300" y2="78" stroke="#ef4444" stroke-width="2"/>
+                        <line x1="265" y1="125" x2="300" y2="112" stroke="#38bdf8" stroke-width="2"/>
+                        <line x1="355" y1="95" x2="395" y2="95" stroke="#10b981" stroke-width="2"/>
+                        <text x="360" y="87" fill="#10b981" font-size="9" font-family="monospace">CPU</text>
+                    </svg>
+                `
+            },
+            {
+                id: 'dprv',
+                shortName: 'ДПРВ',
+                fullName: 'Датчик положения распределительного вала / Датчик фаз (CMP)',
+                category: 'engine',
+                categoryName: 'Двигатель',
+                types: 'Эффект Холла (3-pin) / Магниторезистивный',
+                obdCodes: ['P0340', 'P0341', 'P0342', 'P0343'],
+                symptomsTags: ['long_crank', 'high_fuel', 'no_power', 'misfire'],
+                specs: {
+                    supply: '+5 В или +12 В (опорное от ЭБУ)',
+                    idleSignal: 'Прямоугольные импульсы (Меандр) 0 В ↔ 5 В (или 0 ↔ 12 В)',
+                    revSignal: 'Частота в 2 раза ниже ДПКВ (1 оборот распредвала = 2 оборота коленвала)',
+                    resistance: 'Не измеряется (внутри микросхема Холла)'
+                },
+                principle: `Определяет положение 1-го цилиндра в такте сжатия, чтобы ЭБУ мог организовать <b>фазированный впрыск топлива</b> (форсунка открывается строго перед впускным клапаном нужного цилиндра) и индивидуальное зажигание.
+                <br><br>Работает на <b>эффекте Холла</b>: внутри корпуса находится полупроводниковый кристалл, стабилизатор напряжения и выходной транзистор с открытым коллектором. Когда мимо торца датчика проходит стальной выступ (шторка) распредвала, транзистор открывается и «сажает» подтянутый от ЭБУ сигнальный провод на массу (0 В). Когда шторки нет — напряжение равно опорному (5 В или 12 В).`,
+                checkSteps: [
+                    '<b>Проверка питания:</b> Включите зажигание. На крайнем контакте (Pin 1) должно быть +12 В (или +5 В), на другом крайнем (Pin 3) — надежная масса (0 В).',
+                    '<b>Проверка сигнального провода:</b> На среднем контакте (Pin 2) при снятой фишке должно висеть опорное напряжение подтяжки от ЭБУ (~5 В или ~11 В).',
+                    '<b>Тест на металл:</b> Подключите фишку, проткните иголкой сигнальный провод. Поднесите к торцу датчика металлический ключ — напряжение должно упасть с 5 В до 0.1–0.4 В. Уберите ключ — вернется к 5 В.',
+                    '<b>Осциллограф (синхронизация ГРМ):</b> Снимите одновременно осциллограмму ДПКВ + ДПРВ. Сравните фронт импульса ДПРВ с зубом ДПКВ (обычно 19-й или 20-й зуб после пропуска) — так проверяется растяжение цепи/ремня ГРМ без разбора мотора!'
+                ],
+                symptoms: [
+                    'Увеличенное время прокрутки стартером при запуске (двигатель заводится не с пол-оборота, а через 3–4 секунды).',
+                    'ЭБУ переходит в аварийный попарно-параллельный впрыск — расход топлива вырастает на 1.5–3 литра.',
+                    'Снижение тяги на низких и средних оборотах, загорается Check Engine (P0340).',
+                    'На некоторых современных моторах (с фазовращателями VVT-i / VANOS) двигатель может глохнуть или не запускаться.'
+                ],
+                waveType: 'cmp',
+                pinout: [
+                    { pin: '1', name: 'Питание +12В / +5В', color: '#ef4444' },
+                    { pin: '2', name: 'Сигнал (Меандр)', color: '#10b981' },
+                    { pin: '3', name: 'Масса (GND)', color: '#3b82f6' }
+                ],
+                photoSvg: `
+                    <svg viewBox="0 0 360 210" class="w-full h-full">
+                        <rect x="65" y="55" width="75" height="55" rx="8" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
+                        <rect x="35" y="65" width="32" height="36" rx="4" fill="#0f172a" stroke="#f59e0b" stroke-width="2"/>
+                        <line x1="42" y1="73" x2="58" y2="73" stroke="#ef4444" stroke-width="3"/>
+                        <line x1="42" y1="83" x2="58" y2="83" stroke="#10b981" stroke-width="3"/>
+                        <line x1="42" y1="93" x2="58" y2="93" stroke="#3b82f6" stroke-width="3"/>
+                        <path d="M 135 45 L 155 45 L 155 125 L 135 125 Z" fill="#334155" stroke="#94a3b8" stroke-width="1.5"/>
+                        <circle cx="145" cy="55" r="5" fill="#090d16"/>
+                        <rect x="155" y="68" width="95" height="34" rx="4" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
+                        <rect x="172" y="65" width="7" height="40" rx="3" fill="#10b981"/>
+                        <rect x="250" y="73" width="12" height="24" rx="2" fill="#06b6d4"/>
+                        <text x="20" y="130" fill="#ef4444" font-size="10" font-family="monospace">Pin 1: +12V/+5V</text>
+                        <text x="20" y="145" fill="#10b981" font-size="10" font-family="monospace">Pin 2: Signal (0-5V)</text>
+                        <text x="20" y="160" fill="#38bdf8" font-size="10" font-family="monospace">Pin 3: GND</text>
+                        <text x="225" y="55" fill="#06b6d4" font-size="11" font-family="monospace">Чип Холла</text>
+                        <line x1="256" y1="71" x2="256" y2="59" stroke="#06b6d4" stroke-width="1"/>
+                    </svg>
+                `,
+                circuitSvg: `
+                    <svg viewBox="0 0 420 200" class="w-full h-full">
+                        <rect x="15" y="20" width="180" height="160" rx="10" fill="#0f172a" stroke="#475569" stroke-width="2" stroke-dasharray="5,3"/>
+                        <text x="28" y="40" fill="#94a3b8" font-size="11" font-family="monospace">ДАТЧИК ФАЗ (Холла)</text>
+                        <rect x="35" y="65" width="55" height="45" rx="4" fill="#1e293b" stroke="#06b6d4" stroke-width="2"/>
+                        <text x="44" y="92" fill="#06b6d4" font-size="11" font-weight="bold">HALL IC</text>
+                        <circle cx="140" cy="110" r="18" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+                        <line x1="133" y1="100" x2="133" y2="120" stroke="#f59e0b" stroke-width="2.5"/>
+                        <line x1="90" y1="95" x2="133" y2="110" stroke="#06b6d4" stroke-width="1.5"/>
+                        <line x1="133" y1="105" x2="150" y2="95" stroke="#10b981" stroke-width="2"/>
+                        <line x1="133" y1="115" x2="150" y2="125" stroke="#38bdf8" stroke-width="2"/>
+                        <line x1="60" y1="52" x2="275" y2="52" stroke="#ef4444" stroke-width="2"/>
+                        <line x1="60" y1="52" x2="60" y2="65" stroke="#ef4444" stroke-width="2"/>
+                        <line x1="150" y1="95" x2="275" y2="95" stroke="#10b981" stroke-width="2"/>
+                        <line x1="60" y1="150" x2="275" y2="150" stroke="#38bdf8" stroke-width="2"/>
+                        <line x1="60" y1="110" x2="60" y2="150" stroke="#38bdf8" stroke-width="2"/>
+                        <line x1="150" y1="125" x2="150" y2="150" stroke="#38bdf8" stroke-width="2"/>
+                        <rect x="275" y="20" width="130" height="160" rx="10" fill="#1e293b" stroke="#06b6d4" stroke-width="2"/>
+                        <text x="292" y="40" fill="#06b6d4" font-size="11" font-family="monospace">ЭБУ (ECU)</text>
+                        <text x="285" y="56" fill="#ef4444" font-size="10" font-family="monospace">+12V / +5V</text>
+                        <rect x="315" y="65" width="12" height="24" fill="#0f172a" stroke="#f59e0b" stroke-width="1.5"/>
+                        <line x1="321" y1="52" x2="321" y2="65" stroke="#ef4444" stroke-width="1.5"/>
+                        <line x1="321" y1="89" x2="321" y2="95" stroke="#10b981" stroke-width="1.5"/>
+                        <text x="333" y="80" fill="#f59e0b" font-size="9" font-family="monospace">Pull-up 4.7k</text>
+                        <line x1="275" y1="95" x2="375" y2="95" stroke="#10b981" stroke-width="2"/>
+                        <text x="345" y="110" fill="#10b981" font-size="9" font-family="monospace">Вход CPU</text>
+                        <text x="285" y="154" fill="#38bdf8" font-size="10" font-family="monospace">Масса ЭБУ</text>
+                    </svg>
+                `
+            },
+            {
+                id: 'dmrv',
+                shortName: 'ДМРВ (Bosch HFM5)',
+                fullName: 'Датчик массового расхода воздуха пленочный (MAF)',
+                category: 'air_fuel',
+                categoryName: 'Впуск / Топливо',
+                types: 'Термоанемометрический аналоговый (5-pin)',
+                obdCodes: ['P0100', 'P0101', 'P0102', 'P0103'],
+                symptomsTags: ['high_fuel', 'no_power', 'black_smoke', 'stalls', 'rough_idle'],
+                specs: {
+                    supply: '+12 В (нагрев) и +5 В (опорное для измерительного моста)',
+                    idleSignal: 'АЦП покоя: 0.99–1.02 В | На ХХ: 1.25–1.45 В (расход 8–12 кг/ч)',
+                    revSignal: 'При резком газе в пол: всплеск до 3.8–4.5 В (расход > 150–250 кг/ч)',
+                    resistance: 'Встроенный ДТВВ (Pin 1–3): ~2.0–2.8 кОм при +20°C'
+                },
+                principle: `Измеряет точную массу воздуха, поступающего в цилиндры, чтобы ЭБУ рассчитал длительность открытия форсунок (стехиометрия 14.7:1).
+                <br><br><b>Пленочный датчик (Bosch HFM5):</b> В измерительном канале находится платиновая пленка (нагреватель), поддерживаемая электроникой при постоянной температуре (+120°C выше температуры воздуха), и два терморезистора — до и после нагревателя. Поток воздуха охлаждает первый резистор и нагревает второй. Чем сильнее поток, тем больше ток требуется для поддержания температуры нагревателя. Внутренняя микросхема преобразует этот ток в аналоговый сигнал от 1 В до 5 В.`,
+                checkSteps: [
+                    '<b>Проверка АЦП покоя (главный тест для Bosch HFM5):</b> Включите зажигание (двигатель НЕ заводить!). Измерьте напряжение между Pin 5 (сигнальный) и Pin 3 (масса). Идеал: <b>0.996–1.01 В</b>. Если 1.04–1.05 В и выше — датчик «устал» (завышает расход).',
+                    '<b>Проверка питания:</b> При включенном зажигании на Pin 2 должно быть +12 В (от главного реле), на Pin 4 должно быть опорное +5 В от ЭБУ.',
+                    '<b>Тест резкой перегазовки (осциллограф):</b> Резко нажмите газ до упора. Напряжение на Pin 5 должно мгновенно подскочить с 1.3 В до <b>4.0–4.4 В</b> без затяжек. Если поднимается вяло или до 2.8–3.2 В — пленка загрязнена маслом/пылью, мотор будет тупить.',
+                    '<b>Визуальный осмотр:</b> Проверьте целостность защитной сетки и чистоту измерительного элемента (нельзя чистить механически — платиновая пленка микронной толщины!).'
+                ],
+                symptoms: [
+                    'Сильно повышенный расход топлива (богатая смесь, черные свечи, черный дым из трубы).',
+                    'Вялый разгон, «тупость» при нажатии на педаль газа, провалы.',
+                    'Неустойчивый холостой ход, плавающие обороты.',
+                    'При полном обрыве или отключении разъема ЭБУ переходит в аварийный режим расчета воздуха по ДПДЗ и оборотам (обороты ХХ могут подняться до 1100–1300).'
+                ],
+                waveType: 'maf',
+                pinout: [
+                    { pin: '1', name: 'ДТВВ (Темп. воздуха)', color: '#a855f7' },
+                    { pin: '2', name: 'Питание +12В (Глав. реле)', color: '#ef4444' },
+                    { pin: '3', name: 'Масса датчика (GND)', color: '#3b82f6' },
+                    { pin: '4', name: 'Опорное +5В (ЭБУ)', color: '#f59e0b' },
+                    { pin: '5', name: 'Выход сигнала (1–5В)', color: '#10b981' }
+                ],
+                photoSvg: `
+                    <svg viewBox="0 0 360 210" class="w-full h-full">
+                        <ellipse cx="90" cy="115" rx="35" ry="58" fill="#0f172a" stroke="#475569" stroke-width="3"/>
+                        <ellipse cx="90" cy="115" rx="28" ry="48" fill="#050b14" stroke="#334155" stroke-width="1.5"/>
+                        <line x1="70" y1="85" x2="110" y2="145" stroke="#475569" stroke-width="1"/>
+                        <line x1="110" y1="85" x2="70" y2="145" stroke="#475569" stroke-width="1"/>
+                        <line x1="62" y1="115" x2="118" y2="115" stroke="#475569" stroke-width="1"/>
+                        <path d="M 90 57 L 230 57 A 35 58 0 0 1 230 173 L 90 173 A 35 58 0 0 0 90 57" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
+                        <rect x="125" y="25" width="75" height="36" rx="5" fill="#0f172a" stroke="#f59e0b" stroke-width="2"/>
+                        <text x="135" y="47" fill="#f59e0b" font-size="11" font-family="monospace" font-weight="bold">BOSCH HFM5</text>
+                        <rect x="200" y="30" width="42" height="26" rx="3" fill="#334155" stroke="#94a3b8" stroke-width="1.5"/>
+                        <circle cx="235" cy="36" r="2" fill="#a855f7"/>
+                        <circle cx="235" cy="40" r="2" fill="#ef4444"/>
+                        <circle cx="235" cy="44" r="2" fill="#3b82f6"/>
+                        <circle cx="235" cy="48" r="2" fill="#f59e0b"/>
+                        <circle cx="235" cy="52" r="2" fill="#10b981"/>
+                        <path d="M 30 115 L 70 115" stroke="#06b6d4" stroke-width="3"/>
+                        <text x="20" y="102" fill="#06b6d4" font-size="11" font-family="monospace">Воздух →</text>
+                        <text x="250" y="25" fill="#a855f7" font-size="9" font-family="monospace">1: ДТВВ</text>
+                        <text x="250" y="37" fill="#ef4444" font-size="9" font-family="monospace">2: +12V</text>
+                        <text x="250" y="49" fill="#38bdf8" font-size="9" font-family="monospace">3: GND</text>
+                        <text x="250" y="61" fill="#f59e0b" font-size="9" font-family="monospace">4: +5V Ref</text>
+                        <text x="250" y="73" fill="#10b981" font-size="9" font-family="monospace">5: Sig (1-5V)</text>
+                    </svg>
+                `,
+                circuitSvg: `
+                    <svg viewBox="0 0 420 200" class="w-full h-full">
+                        <rect x="15" y="15" width="195" height="170" rx="10" fill="#0f172a" stroke="#475569" stroke-width="2" stroke-dasharray="5,3"/>
+                        <text x="25" y="35" fill="#94a3b8" font-size="10" font-family="monospace">ДАТЧИК ДМРВ (HFM5)</text>
+                        <rect x="40" y="48" width="32" height="12" fill="#1e293b" stroke="#a855f7" stroke-width="1.5"/>
+                        <line x1="35" y1="63" x2="77" y2="45" stroke="#a855f7" stroke-width="1.5"/>
+                        <text x="85" y="58" fill="#a855f7" font-size="9" font-family="monospace">NTC (ДТВВ)</text>
+                        <rect x="40" y="80" width="110" height="75" rx="6" fill="#1e293b" stroke="#f59e0b" stroke-width="1.5"/>
+                        <text x="52" y="102" fill="#f59e0b" font-size="10" font-weight="bold">Измерительный</text>
+                        <text x="65" y="116" fill="#f59e0b" font-size="10" font-weight="bold">мост + ОУ</text>
+                        <text x="55" y="138" fill="#94a3b8" font-size="9" font-family="monospace">Нагрев +120°C</text>
+                        <line x1="72" y1="54" x2="270" y2="42" stroke="#a855f7" stroke-width="1.8"/>
+                        <line x1="150" y1="90" x2="270" y2="75" stroke="#ef4444" stroke-width="1.8"/>
+                        <line x1="150" y1="110" x2="270" y2="110" stroke="#38bdf8" stroke-width="1.8"/>
+                        <line x1="150" y1="130" x2="270" y2="142" stroke="#f59e0b" stroke-width="1.8"/>
+                        <line x1="150" y1="148" x2="270" y2="170" stroke="#10b981" stroke-width="2"/>
+                        <rect x="270" y="15" width="135" height="170" rx="10" fill="#1e293b" stroke="#06b6d4" stroke-width="2"/>
+                        <text x="285" y="32" fill="#06b6d4" font-size="10" font-family="monospace">ЭБУ / БОРТСЕТЬ</text>
+                        <text x="278" y="46" fill="#a855f7" font-size="9" font-family="monospace">1: АЦП Темп.</text>
+                        <text x="278" y="78" fill="#ef4444" font-size="9" font-family="monospace">2: +12V Реле</text>
+                        <text x="278" y="113" fill="#38bdf8" font-size="9" font-family="monospace">3: Масса ЭБУ</text>
+                        <text x="278" y="145" fill="#f59e0b" font-size="9" font-family="monospace">4: +5V Опорное</text>
+                        <text x="278" y="173" fill="#10b981" font-size="9" font-family="monospace">5: АЦП Расход</text>
+                    </svg>
+                `
+            },
+            {
+                id: 'dkat',
+                shortName: 'ДМРВ (Частотный)',
+                fullName: 'Частотный датчик расхода воздуха (Hitachi / Denso / Mitsubishi)',
+                category: 'air_fuel',
+                categoryName: 'Впуск / Топливо',
+                types: 'Цифровой частотный (меандр 0–5 В с переменной частотой)',
+                obdCodes: ['P0100', 'P0101', 'P0102', 'P0103'],
+                symptomsTags: ['high_fuel', 'no_power', 'rough_idle'],
+                specs: {
+                    supply: '+12 В (или +5 В) питание и масса',
+                    idleSignal: 'Меандр 0–5 В с частотой ~1.8–2.4 кГц (зависит от объема мотора)',
+                    revSignal: 'При перегазовке: частота увеличивается до 6.0–9.5 кГц',
+                    resistance: 'Не измеряется (цифровой генератор)'
+                },
+                principle: `В отличие от аналогового Bosch HFM5 (где меняется напряжение 1–5 В), частотные датчики (Toyota/Denso, Mitsubishi, Nissan, VAG) преобразуют массу воздуха в <b>частоту прямоугольных импульсов (Гц)</b> с постоянной амплитудой 0–5 В. Такой сигнал абсолютно не боится падения напряжения в проводке и наводок.`,
+                checkSteps: [
+                    '<b>Важно:</b> Обычный мультиметр покажет на сигнальном проводе просто среднее напряжение ~2.5 В и на ХХ, и на оборотах — так его не проверить! Нужен <b>осциллограф</b> или мультиметр с режимом измерения частоты (<b>Hz</b>).',
+                    '<b>Проверка частотомером:</b> На холостом ходу частота должна быть стабильной в районе 1800–2400 Гц. При резком нажатии на газ частота должна мгновенно взлетать до 7000–9000 Гц.'
+                ],
+                symptoms: [
+                    'Провалы при разгоне, завышенный расход топлива, неустойчивый ХХ.',
+                    'Ошибки P0101 (выход сигнала за пределы диапазона).'
+                ],
+                waveType: 'freq_maf',
+                pinout: [
+                    { pin: '1', name: 'Питание +12В', color: '#ef4444' },
+                    { pin: '2', name: 'Масса (GND)', color: '#3b82f6' },
+                    { pin: '3', name: 'Частотный
